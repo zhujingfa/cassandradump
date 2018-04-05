@@ -82,11 +82,18 @@ def table_to_cqlfile(session, keyspace, tablename, flt, tableval, filep, limit=0
         non_counters = partitions.get(False, [])
         columns = counters + non_counters
 
+        keytab=None
+        if args.sql is not None:
+            keytab='"%(tablename)s"'
+        else:
+            keytab='"%(keyspace)s"."%(tablename)s"'
+
         if len(counters) > 0:
             def row_encoder(values):
                 set_clause = ", ".join('%s = %s + %s' % (c, c, values[c]) for c in counters if values[c] != 'NULL')
                 where_clause = " AND ".join('%s = %s' % (c, values[c]) for c in non_counters)
-                return 'UPDATE "%(keyspace)s"."%(tablename)s" SET %(set_clause)s WHERE %(where_clause)s' % dict(
+                temp = 'UPDATE '+keytab+' SET %(set_clause)s WHERE %(where_clause)s'
+                return temp % dict(
                     keyspace=keyspace,
                     tablename=tablename,
                     where_clause=where_clause,
@@ -95,7 +102,8 @@ def table_to_cqlfile(session, keyspace, tablename, flt, tableval, filep, limit=0
         else:
             columns = list(counters + non_counters)
             def row_encoder(values):
-                return 'INSERT INTO "%(keyspace)s"."%(tablename)s" (%(columns)s) VALUES (%(values)s)' % dict(
+                temp='INSERT INTO '+keytab+' (%(columns)s) VALUES (%(values)s)'
+                return temp % dict(
                     keyspace=keyspace,
                     tablename=tablename,
                     columns=', '.join('"{}"'.format(c) for c in columns if values[c] != "NULL"),
