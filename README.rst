@@ -7,6 +7,18 @@ cassandradump
 Description
 -----------
 
+update: use Python3, utf-8 is default, and support cassandra 3 default.
+
+::
+
+    add --sql for normal sql:
+    python3 cassandradump.py --host 127.0.0.1 --port 9042 --cf kong.apis --no-create --sql yes --export-file dump.cql
+
+    default for cassandra:
+    python3 cassandradump.py --host 127.0.0.1 --port 9042 --cf kong.apis --no-create --sql yes --export-file dump.cql
+
+::
+
 A data exporting tool for Cassandra inspired from mysqldump, with some
 additional slice and dice capabilities.
 

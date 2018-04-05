@@ -26,8 +26,9 @@ def cql_type(val):
     except AttributeError:
         return val.cql_type
 
-def to_utf8(string):
-    return codecs.decode(string, 'utf-8')
+# py3 sys.getdefaultencoding()=utf-8, no need.
+# def to_utf8(string):
+#     return str(string).encode('utf-8')
 
 def log_quiet(msg):
     if not args.quiet:
@@ -57,6 +58,10 @@ def table_to_cqlfile(session, keyspace, tablename, flt, tableval, filep, limit=0
             return session.encoder.cql_encode_set_collection
         elif typename.startswith('list'):
             return session.encoder.cql_encode_list_collection
+        elif typename.startswith('uuid') and args.sql is not None:
+            return lambda x: "'"+str(x)+"'"
+        elif typename.startswith('timestamp') and args.sql is not None:
+            return lambda x: "'"+str(x)+"'"
         else:
             return session.encoder.cql_encode_all_types
 
@@ -65,16 +70,13 @@ def table_to_cqlfile(session, keyspace, tablename, flt, tableval, filep, limit=0
         return lambda v: session.encoder.cql_encode_all_types(v) if v is None else e(v)
 
     def make_value_encoders(tableval):
-        return dict((to_utf8(k), make_value_encoder(cql_type(v))) for k, v in tableval.columns.iteritems())
+        return dict((k, make_value_encoder(cql_type(v))) for k, v in tableval.columns.items())
 
     def make_row_encoder():
         partitions = dict(
-            (has_counter, list(to_utf8(k) for k, v in columns))
-            for has_counter, columns in itertools.groupby(tableval.columns.iteritems(), lambda (k, v): cql_type(v) == 'counter')
+            (has_counter, list(k for k, v in columns))
+            for has_counter, columns in itertools.groupby(tableval.columns.items(), lambda kv: cql_type(kv[1]) == 'counter')
         )
-
-        keyspace_utf8 = to_utf8(keyspace)
-        tablename_utf8 = to_utf8(tablename)
 
         counters = partitions.get(True, [])
         non_counters = partitions.get(False, [])
@@ -85,8 +87,8 @@ def table_to_cqlfile(session, keyspace, tablename, flt, tableval, filep, limit=0
                 set_clause = ", ".join('%s = %s + %s' % (c, c, values[c]) for c in counters if values[c] != 'NULL')
                 where_clause = " AND ".join('%s = %s' % (c, values[c]) for c in non_counters)
                 return 'UPDATE "%(keyspace)s"."%(tablename)s" SET %(set_clause)s WHERE %(where_clause)s' % dict(
-                    keyspace=keyspace_utf8,
-                    tablename=tablename_utf8,
+                    keyspace=keyspace,
+                    tablename=tablename,
                     where_clause=where_clause,
                     set_clause=set_clause,
                 )
@@ -94,18 +96,18 @@ def table_to_cqlfile(session, keyspace, tablename, flt, tableval, filep, limit=0
             columns = list(counters + non_counters)
             def row_encoder(values):
                 return 'INSERT INTO "%(keyspace)s"."%(tablename)s" (%(columns)s) VALUES (%(values)s)' % dict(
-                    keyspace=keyspace_utf8,
-                    tablename=tablename_utf8,
+                    keyspace=keyspace,
+                    tablename=tablename,
                     columns=', '.join('"{}"'.format(c) for c in columns if values[c] != "NULL"),
-                    values=', '.join(values[c] for c in columns if values[c] != "NULL"),
+                    values=', '.join(values[str(c)] for c in columns if values[c] != "NULL"),
                 )
         return row_encoder
 
+
     value_encoders = make_value_encoders(tableval)
     row_encoder = make_row_encoder()
-
     for row in rows:
-        values = dict((to_utf8(k), to_utf8(value_encoders[k](v))) for k, v in row.iteritems())
+        values = dict((k, value_encoders[k](v)) for k, v in row.items())
         filep.write("%s;\n" % row_encoder(values))
 
         cnt += 1
@@ -236,7 +238,7 @@ def export_data(session):
                 f.write('DROP KEYSPACE IF EXISTS "' + keyname + '";\n')
                 f.write(keyspace.export_as_string() + '\n')
 
-            for tablename, tableval in keyspace.tables.iteritems():
+            for tablename, tableval in keyspace.tables.items():
                 if tablename in exclude_list:
                     log_quiet('Skipping data export for column family ' + keyname + '.' + tablename + '\n')
                     continue
@@ -373,6 +375,7 @@ def main():
     parser.add_argument('--certfile', help='ca cert file for SSL.  Assumes --ssl.')
     parser.add_argument('--userkey', help='user key file for client authentication.  Assumes --ssl.')
     parser.add_argument('--usercert', help='user cert file for client authentication.  Assumes --ssl.')
+    parser.add_argument('--sql', help='Normal sql format for postgresql and mysql.')
 
     args = parser.parse_args()
 
