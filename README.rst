@@ -17,6 +17,9 @@ update: use Python3, utf-8 is default, and support cassandra 3 default.
     default for cassandra:
     python3 cassandradump.py --host 127.0.0.1 --port 9042 --cf kong.apis --no-create --sql yes --export-file dump.cql
 
+    data backup for kong database to sql:
+    python3 cassandradump.py --host 127.0.0.1 --port 9042 --keyspace kong --exclude-cf schema_migrations --no-create --sql yes --export-file dump.cql
+
 ::
 
 A data exporting tool for Cassandra inspired from mysqldump, with some
